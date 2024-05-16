@@ -99,15 +99,57 @@ def createLinkEditCommand(String buildFile, LogicalFile logicalFile, String memb
 	linkedit.dd(new DDStatement().name("SYSPRINT").options(props.linkedit_tempOptions))
 	linkedit.dd(new DDStatement().name("SYSUT1").options(props.linkedit_tempOptions))
 
-	// add a syslib to the compile command with optional CICS concatenation
-	linkedit.dd(new DDStatement().name("SYSLIB").dsn(props.linkedit_objPDS).options("shr"))
 	// add custom concatenation
 	def linkEditSyslibConcatenation = props.getFileProperty('linkedit_linkEditSyslibConcatenation', buildFile) ?: ""
+	def String[] syslibAddl; //If SYSLIB is added in this property then store in this array separately to concat to SYSLIB later
 	if (linkEditSyslibConcatenation) {
-		def String[] syslibDatasets = linkEditSyslibConcatenation.split(',');
-		for (String syslibDataset : syslibDatasets )
-		linkedit.dd(new DDStatement().dsn(syslibDataset).options("shr"))
+		syslibNameAllocations = buildUtils.parseJSONStringToMap(props.linkedit_linkEditSyslibConcatenation)
+		syslibNameAllocations.each { libraryName, datasetDefinition ->
+			if (libraryName.equals('SYSLIB')) {
+				syslibAddl = datasetDefinition
+			}
+			else {
+				String prevLibName = '';
+				datasetDefinition.each {datasetName ->
+					tempDsName = props.getProperty(datasetName)
+					if (tempDsName) {
+						if (prevLibName.equals(libraryName)) {
+							linkedit.dd(new DDStatement().dsn(tempDsName).options("shr"))
+						}
+						else {
+							linkedit.dd(new DDStatement().name(libraryName).dsn(tempDsName).options("shr"))
+						}
+					}
+					else {
+						String errorMsg = "*! LinkEdit.groovy. The dataset definition $datasetName could not be resolved from the DBB Build properties."
+						println(errorMsg)
+						props.error = "true"
+						buildUtils.updateBuildResult(errorMsg:errorMsg)
+					}
+					prevLibName = libraryName;
+				}
+			}
+		}
 	}
+
+	// add a syslib to the compile command with optional CICS concatenation
+	linkedit.dd(new DDStatement().name("SYSLIB").dsn(props.linkedit_objPDS).options("shr"))
+	// If SYSLIB was found in linkEditSyslibConcatenation, concat as SYSLIB below:
+	if (syslibAddl) {
+		syslibAddl.each {datasetName ->
+			tempDsName = props.getProperty(datasetName)
+			if (tempDsName) {
+				linkedit.dd(new DDStatement().dsn(tempDsName).options("shr"))
+			}
+			else {
+				String errorMsg = "*!LinkEdit.groovy. The dataset definition $datasetName could not be resolved from the DBB Build properties."
+				println(errorMsg)
+				props.error = "true"
+				buildUtils.updateBuildResult(errorMsg:errorMsg)
+			}
+		}
+	}
+
 	linkedit.dd(new DDStatement().dsn(props.SCEELKED).options("shr"))
 	
 	if (props.debug && props.SEQAMOD)
@@ -124,7 +166,7 @@ def createLinkEditCommand(String buildFile, LogicalFile logicalFile, String memb
 
 	if (props.SCSQLOAD)
 		linkedit.dd(new DDStatement().dsn(props.SCSQLOAD).options("shr"))
-		
+			
 	// add a copy command to the linkedit command to append the SYSPRINT from the temporary dataset to the HFS log file
 	linkedit.copy(new CopyToHFS().ddName("SYSPRINT").file(logFile).hfsEncoding(props.logEncoding))
 

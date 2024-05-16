@@ -241,15 +241,24 @@ def createCompileCommand(String buildFile, LogicalFile logicalFile, String membe
 	if (props.pli_dependenciesAlternativeLibraryNameMapping) {
 		alternateLibraryNameAllocations = buildUtils.parseJSONStringToMap(props.pli_dependenciesAlternativeLibraryNameMapping)
 		alternateLibraryNameAllocations.each { libraryName, datasetDefinition ->
-			datasetName = props.getProperty(datasetDefinition)
-			if (datasetName) {
-				compile.dd(new DDStatement().name(libraryName).dsn(datasetName).options("shr"))
-			}
-			else {
-				String errorMsg = "*! PLI.groovy. The dataset definition $datasetDefinition could not be resolved from the DBB Build properties."
-				println(errorMsg)
-				props.error = "true"
-				buildUtils.updateBuildResult(errorMsg:errorMsg)
+			String prevLibName = '';
+			datasetDefinition.each {datasetName ->
+				tempDsName = props.getProperty(datasetName)
+				if (tempDsName) {
+					if (prevLibName.equals(libraryName)) {
+						compile.dd(new DDStatement().dsn(tempDsName).options("shr"))
+					}
+					else {
+						compile.dd(new DDStatement().name(libraryName).dsn(tempDsName).options("shr"))
+					}
+				}
+				else {
+					String errorMsg = "*! PLI.groovy. The dataset definition $datasetName could not be resolved from the DBB Build properties."
+					println(errorMsg)
+					props.error = "true"
+					buildUtils.updateBuildResult(errorMsg:errorMsg)
+				}
+				prevLibName = libraryName;				
 			}
 		}
 	}

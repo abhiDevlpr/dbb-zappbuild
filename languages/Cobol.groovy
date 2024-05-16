@@ -239,23 +239,6 @@ def createCompileCommand(String buildFile, LogicalFile logicalFile, String membe
 	if (isZUnitTestCase)
 	compile.dd(new DDStatement().dsn(props.SBZUSAMP).options("shr"))
 
-	// adding alternate library definitions
-	if (props.cobol_dependenciesAlternativeLibraryNameMapping) {
-		alternateLibraryNameAllocations = buildUtils.parseJSONStringToMap(props.cobol_dependenciesAlternativeLibraryNameMapping)
-		alternateLibraryNameAllocations.each { libraryName, datasetDefinition ->
-			datasetName = props.getProperty(datasetDefinition)
-			if (datasetName) {
-				compile.dd(new DDStatement().name(libraryName).dsn(datasetName).options("shr"))
-			}
-			else {
-				String errorMsg = "*! Cobol.groovy. The dataset definition $datasetDefinition could not be resolved from the DBB Build properties."
-				println(errorMsg)
-				props.error = "true"
-				buildUtils.updateBuildResult(errorMsg:errorMsg)
-			}
-		}
-	}
-	
 	// add a tasklib to the compile command with optional CICS, DB2, and IDz concatenations
 	String compilerVer = props.getFileProperty('cobol_compilerVersion', buildFile)
 	compile.dd(new DDStatement().name("TASKLIB").dsn(props."SIGYCOMP_$compilerVer").options("shr"))
@@ -278,6 +261,32 @@ def createCompileCommand(String buildFile, LogicalFile logicalFile, String membe
 		compile.dd(new DDStatement().name("SYSADATA").options("DUMMY"))
 		// SYSXMLSD.XML suffix is mandatory for IDZ/ZOD to populate remote error list
 		compile.dd(new DDStatement().name("SYSXMLSD").dsn("${props.hlq}.${props.errPrefix}.SYSXMLSD.XML").options(props.cobol_compileErrorFeedbackXmlOptions))
+	}
+
+	// adding alternate library definitions
+	if (props.cobol_dependenciesAlternativeLibraryNameMapping) {
+		alternateLibraryNameAllocations = buildUtils.parseJSONStringToMap(props.cobol_dependenciesAlternativeLibraryNameMapping)
+		alternateLibraryNameAllocations.each { libraryName, datasetDefinition ->
+			String prevLibName = '';
+			datasetDefinition.each {datasetName ->
+				tempDsName = props.getProperty(datasetName)
+				if (tempDsName) {
+					if (prevLibName.equals(libraryName)) {
+						compile.dd(new DDStatement().dsn(tempDsName).options("shr"))
+					}
+					else {
+						compile.dd(new DDStatement().name(libraryName).dsn(tempDsName).options("shr"))
+					}
+				}
+				else {
+					String errorMsg = "*! Cobol.groovy. The dataset definition $datasetName could not be resolved from the DBB Build properties."
+					println(errorMsg)
+					props.error = "true"
+					buildUtils.updateBuildResult(errorMsg:errorMsg)
+				}
+				prevLibName = libraryName;				
+			}
+		}
 	}
 
 	// add a copy command to the compile command to copy the SYSPRINT from the temporary dataset to an HFS log file
